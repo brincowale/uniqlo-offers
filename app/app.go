@@ -7,7 +7,9 @@ import (
 	"log"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
+	"uniqlo/config"
 )
 
 type Uniqlo struct {
@@ -15,21 +17,21 @@ type Uniqlo struct {
 }
 
 type Product struct {
-	id            string
-	title         string
-	color         string
-	size          string
-	stock         int64
-	standardPrice float64
-	salePrice     float64
-	lastSeen      string
-	url           string
-	imageUrl      string
+	Id            string
+	Title         string
+	Color         string
+	Size          string
+	Stock         int64
+	StandardPrice float64
+	SalePrice     float64
+	LastSeen      string
+	Url           string
+	ImageUrl      string
 }
 
 type MainProduct struct {
-	id    string
-	title string
+	Id    string
+	Title string
 }
 
 func New() *Uniqlo {
@@ -41,8 +43,8 @@ func (u Uniqlo) Scrape(url string) []MainProduct {
 	var mainProducts []MainProduct
 	u.client.OnHTML("article.productTile", func(e *colly.HTMLElement) {
 		p := MainProduct{
-			id:    e.ChildAttr("a", "data-dlmasterid"),
-			title: e.ChildAttr("a", "title"),
+			Id:    e.ChildAttr("a", "data-dlmasterid"),
+			Title: e.ChildAttr("a", "title"),
 		}
 		mainProducts = append(mainProducts, p)
 	})
@@ -50,9 +52,9 @@ func (u Uniqlo) Scrape(url string) []MainProduct {
 	return mainProducts
 }
 
-func (u Uniqlo) ScrapeProductVariations(mainProduct MainProduct) []Product {
+func (u Uniqlo) ScrapeProductVariations(mainProductId string, mainProductTitle string) []Product {
 	client := resty.New().SetTimeout(1*time.Minute).SetHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.159 Safari/537.36")
-	resp, err := client.R().Get("https://www.uniqlo.com/on/demandware.store/Sites-ES-Site/es_ES/Product-GetVariants?pid=" + mainProduct.id + "&Quantity=1")
+	resp, err := client.R().Get("https://www.uniqlo.com/on/demandware.store/Sites-ES-Site/es_ES/Product-GetVariants?pid=" + mainProductId + "&Quantity=1")
 	if err != nil {
 		log.Println(err)
 	}
@@ -63,42 +65,31 @@ func (u Uniqlo) ScrapeProductVariations(mainProduct MainProduct) []Product {
 			continue
 		}
 		var product Product
-		product.id = gjson.Get(productVariation.String(), "id").String()
-		product.title = mainProduct.title
-		product.color = gjson.Get(productVariation.String(), "attributes.color").String()
-		product.size = gjson.Get(productVariation.String(), "attributes.size").String()
-		product.stock = gjson.Get(productVariation.String(), "availability.ats").Int()
-		product.salePrice = gjson.Get(productVariation.String(), "pricing.sale").Float()
-		product.standardPrice = gjson.Get(productVariation.String(), "pricing.standard").Float()
-		product.lastSeen = time.Now().Format("2006-01-02 15:04:05")
-		product.imageUrl = u.CreateProductImageURLVariation(product.id)
-		product.url = u.CreateProductURLVariation(product.id)
+		product.Id = gjson.Get(productVariation.String(), "id").String()
+		product.Title = mainProductTitle
+		product.Color = gjson.Get(productVariation.String(), "attributes.color").String()
+		product.Size = gjson.Get(productVariation.String(), "attributes.size").String()
+		product.Stock = gjson.Get(productVariation.String(), "availability.ats").Int()
+		product.SalePrice = gjson.Get(productVariation.String(), "pricing.sale").Float()
+		product.StandardPrice = gjson.Get(productVariation.String(), "pricing.standard").Float()
+		product.LastSeen = time.Now().Format("2006-01-02 15:04:05")
+		product.ImageUrl = u.CreateProductImageURLVariation(product.Id)
+		product.Url = u.CreateProductURLVariation(product.Id)
 		products = append(products, product)
 	}
 	return products
 
 }
 
-func (u Uniqlo) KeepValidOffersOnly(products []Product, minimumDiscount float64) []Product {
-	var validProducts []Product
-	for _, product := range products {
-		percentage := 100 - (product.salePrice/product.standardPrice)*100
-		if percentage >= minimumDiscount {
-			validProducts = append(validProducts, product)
-		}
-	}
-	return validProducts
-}
-
 func (u Uniqlo) CreateMessage(product Product) string {
-	originalPrice := strconv.FormatFloat(product.standardPrice, 'f', -1, 64)
-	discountedPrice := strconv.FormatFloat(product.salePrice, 'f', -1, 64)
+	originalPrice := strconv.FormatFloat(product.StandardPrice, 'f', -1, 64)
+	discountedPrice := strconv.FormatFloat(product.SalePrice, 'f', -1, 64)
 	invisibleSpace := "&#8204;"
 	returnLine := "\n"
 	str :=
-		product.title + " (" + product.color + ") [" + product.size + "]" + returnLine + "Antes: " + originalPrice +
-			"€ - Ahora: " + discountedPrice + "€" + "<a href=\"" + product.imageUrl + "\">" + invisibleSpace + "</a>" +
-			returnLine + "URL: " + product.url
+		product.Title + " (" + product.Color + ") [" + product.Size + "]" + returnLine + "Antes: " + originalPrice +
+			"€ - Ahora: " + discountedPrice + "€" + "<a href=\"" + product.ImageUrl + "\">" + invisibleSpace + "</a>" +
+			returnLine + "Stock: " + strconv.FormatInt(product.Stock, 10) + returnLine + "URL: " + product.Url
 	return str
 }
 
@@ -112,4 +103,39 @@ func (u Uniqlo) CreateProductImageURLVariation(productID string) string {
 	r, _ := regexp.Compile("^(\\d+)COL(\\d+)")
 	data := r.FindStringSubmatch(productID)
 	return "https://image.uniqlo.com/UQ/ST3/WesternCommon/imagesgoods/" + string(data[1]) + "/item/goods_" + string(data[2]) + "_" + string(data[1]) + ".jpg?width=500&impolicy=quality_60&imformat=chrome"
+}
+
+func (u Uniqlo) KeepValidOffersOnly(products []Product, cfg *config.Config) []Product {
+	var validProducts []Product
+	for _, product := range products {
+		if u.IsValidDiscount(product.SalePrice, product.StandardPrice, cfg.MinimumDiscount) &&
+			u.IsValidTitle(product.Title, cfg.NotValidTitles) && u.IsValidSize(product.Size, cfg.NotValidSizes) {
+			validProducts = append(validProducts, product)
+		}
+	}
+	return validProducts
+}
+
+func (u Uniqlo) IsValidDiscount(salePrice float64, standardPrice float64, minimumDiscount float64) bool {
+	percentage := 100 - (salePrice/standardPrice)*100
+	return percentage >= minimumDiscount
+}
+
+func (u Uniqlo) IsValidSize(size string, notValidSizes []string) bool {
+	for _, notValidSize := range notValidSizes {
+		if strings.ToLower(notValidSize) == strings.ToLower(size) {
+			return false
+		}
+	}
+	return true
+}
+
+func (u Uniqlo) IsValidTitle(title string, notValidTitles []string) bool {
+	title = strings.ToLower(title)
+	for _, notValidTitle := range notValidTitles {
+		if strings.Contains(title, strings.ToLower(notValidTitle)) {
+			return false
+		}
+	}
+	return true
 }

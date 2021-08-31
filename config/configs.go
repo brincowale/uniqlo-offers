@@ -27,7 +27,6 @@ func LoadConfigs() *Config {
 	}
 	var category []Category
 	err = viper.UnmarshalKey("categories", &category)
-	fmt.Println(category)
 	if err != nil {
 		fmt.Println(err)
 	}

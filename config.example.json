@@ -1,0 +1,22 @@
+{
+  "telegram_api_key": "REPLACE-TELEGRAM-APIKEY",
+  "minimum_discount": 40,
+  "categories": [
+    {
+      "channel": "REPLACE-TELEGRAM-CHANNEL",
+      "url": "https://www.uniqlo.com/es/es/mujer/articulos-destacados/oferta-limitada?pmid=technical_SearchRefinement_Sale_LimitedOffer&start=0&sz=9999&format=page-element&srule=price-asc"
+    },
+    {
+      "channel": "REPLACE-TELEGRAM-CHANNEL",
+      "url": "https://www.uniqlo.com/es/es/hombre/articulos-destacados/oferta-limitada?pmid=technical_SearchRefinement_Sale_LimitedOffer&start=0&sz=9999&format=page-element&srule=price-asc"
+    }
+  ],
+  "not_valid_sizes": [
+    "xxs",
+    "3xl",
+    "22inch"
+  ],
+  "not_valid_titles": [
+    "Camiseta Gráfica"
+  ]
+}
