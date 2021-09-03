@@ -1,6 +1,7 @@
 package app
 
 import (
+	"fmt"
 	"github.com/go-resty/resty/v2"
 	"github.com/gocolly/colly"
 	"github.com/tidwall/gjson"
@@ -65,7 +66,7 @@ func (u Uniqlo) ScrapeProductVariations(mainProductId string, mainProductTitle s
 			continue
 		}
 		var product Product
-		product.Id = gjson.Get(productVariation.String(), "id").String()
+		id := gjson.Get(productVariation.String(), "id").String()
 		product.Title = mainProductTitle
 		product.Color = gjson.Get(productVariation.String(), "attributes.color").String()
 		product.Size = gjson.Get(productVariation.String(), "attributes.size").String()
@@ -73,8 +74,9 @@ func (u Uniqlo) ScrapeProductVariations(mainProductId string, mainProductTitle s
 		product.SalePrice = gjson.Get(productVariation.String(), "pricing.sale").Float()
 		product.StandardPrice = gjson.Get(productVariation.String(), "pricing.standard").Float()
 		product.LastSeen = time.Now().Format("2006-01-02 15:04:05")
-		product.ImageUrl = u.CreateProductImageURLVariation(product.Id)
-		product.Url = u.CreateProductURLVariation(product.Id)
+		product.ImageUrl = u.CreateProductImageURLVariation(id)
+		product.Url = u.CreateProductURLVariation(id)
+		product.Id = fmt.Sprintf("%s_%.2f", id, product.SalePrice)
 		products = append(products, product)
 	}
 	return products
